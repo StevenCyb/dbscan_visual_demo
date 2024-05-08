@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DBSCAN</title>
+  </head>
+  <body>
+    <style>
+      canvas {
+        width: 500px;
+        height: 500px;
+      }
+    </style>
+
+    <canvas id="chart" width="500" height="500"></canvas>
+
+    <script>
+      const chart = document.getElementById("chart");
+      const ctx = chart.getContext("2d");
+
+      const xFactor = chart.clientWidth / 100;
+      const yFactor = chart.clientHeight / 100;
+
+      function drawPoint(x, y, color, border = false) {
+        ctx.beginPath();
+        ctx.arc(
+          x * xFactor,
+          y * yFactor,
+          Math.min(xFactor, yFactor),
+          0,
+          2 * Math.PI
+        );
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        if (border) {
+          ctx.lineWidth = Math.min(xFactor, yFactor) * 0.2;
+          ctx.strokeStyle = "black";
+          ctx.stroke();
+        }
+      }
+
+      function getColor(cluster) {
+        var hue = (cluster * 360) / colors;
+        var saturation = 70;
+        var lightness = 50;
+        var rgbColor = hslToRgb(hue, saturation, lightness);
+        var hexColor = rgbToHex(rgbColor[0], rgbColor[1], rgbColor[2]);
+
+        return hexColor;
+      }
+
+      function hslToRgb(h, s, l) {
+        var r, g, b;
+        h /= 360;
+        s /= 100;
+        l /= 100;
+
+        if (s === 0) {
+          r = g = b = l; // Achromatic
+        } else {
+          const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1 / 6) return p + (q - p) * 6 * t;
+            if (t < 1 / 2) return q;
+            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+            return p;
+          };
+
+          const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+          const p = 2 * l - q;
+          r = hue2rgb(p, q, h + 1 / 3);
+          g = hue2rgb(p, q, h);
+          b = hue2rgb(p, q, h - 1 / 3);
+        }
+
+        return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+      }
+
+      function rgbToHex(r, g, b) {
+        return (
+          "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
+        );
+      }
+
+      const Label = {
+        Undefined: 0,
+        CorePoint: 1,
+        Reachable: 2,
+        Noise: 3,
+      };
+
+      class Point {
+        constructor(x, y) {
+          this.x = x;
+          this.y = y;
+          this.label = Label.Undefined;
+          this.cluster = null;
+        }
+      }
+
+      function euclideanDistance(p1, p2) {
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      function RangeQuery(points, distFunc, Q, eps) {
+        const N = [];
+
+        for (let i = 0; i < points.length; i++) {
+          // Scan all points in the database
+          const P = points[i];
+          if (distFunc(Q, P) <= eps) {
+            // Compute distance and check epsilon
+            N.push(i); // Add index of point to result
+          }
+        }
+
+        return N;
+      }
+
+      function DBSCAN(points, distFunc, eps, minPts) {
+        let C = 0; // Cluster counter
+
+        for (let i = 0; i < points.length; i++) {
+          if (points[i].label !== Label.Undefined) continue; // Previously processed in inner loop
+
+          const P = points[i];
+          var N = RangeQuery(points, distFunc, P, eps); // Find neighbors
+
+          if (N.length < minPts) {
+            points[i].label = Label.Noise; // Label as Noise
+            continue;
+          }
+
+          points[i].cluster = C; // Label initial point
+          points[i].label = Label.CorePoint; // Label initial point
+
+          for (let j = 0; j < N.length; j++) {
+            const Q = N[j];
+
+            if (points[Q].label === Label.Noise) {
+              // Change Noise to border point
+              points[Q].label = Label.Reachable;
+              points[Q].cluster = C;
+            }
+            if (points[Q].label !== Label.Undefined) continue; // Previously processed
+
+            points[Q].label = Label.Reachable;
+            points[Q].cluster = C; // Label neighbor
+            P_Q = points[Q];
+            const N_Q = RangeQuery(points, distFunc, P_Q, eps); // Find neighbors
+
+            if (N_Q.length >= minPts) {
+              points[Q].label = Label.CorePoint; // Change to core point
+              N = N.concat(N_Q.filter((p) => !N.includes(p))); // Add new neighbors to seed set
+            }
+          }
+
+          C++; // Next cluster label
+        }
+
+        return points;
+      }
+
+      // Example usage
+      const pointCount = 50;
+      const minPts = 3;
+      const eps = 15; // epsilon
+      const colors = Math.abs(pointCount / 4);
+      const points = [];
+
+      for (let i = 0; i < pointCount; i++) {
+        points.push(new Point(Math.random() * 100, Math.random() * 100));
+      }
+
+      const clusteredPoints = DBSCAN(points, euclideanDistance, eps, minPts);
+      console.log(clusteredPoints);
+
+      for (let i = 0; i < clusteredPoints.length; i++) {
+        var color = "#808080";
+        var border = false;
+
+        if (clusteredPoints[i].label === Label.CorePoint) {
+          border = true;
+          color = getColor(clusteredPoints[i].cluster);
+        } else if (clusteredPoints[i].label === Label.Reachable) {
+          color = getColor(clusteredPoints[i].cluster);
+        }
+        drawPoint(clusteredPoints[i].x, clusteredPoints[i].y, color, border);
+      }
+    </script>
+  </body>
+</html>
